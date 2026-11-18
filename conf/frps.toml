@@ -1,1 +1,16 @@
+# Public server. auth.token must match conf/frpc.toml.
+bindAddr = "0.0.0.0"
 bindPort = 7000
+vhostHTTPSPort = 443
+
+auth.method = "token"
+auth.token = "3c6af50bb349485b8e3b7cdaacfa52b5"
+
+# Accept only TLS from frpc. Control channel is TCP plus TLS, not wss.
+transport.tls.force = true
+
+# Dashboard: view clients, proxies, and traffic. It does not edit this file.
+webServer.addr = "0.0.0.0"
+webServer.port = 7500
+webServer.user = "admin"
+webServer.password = "f1e929d7c0174b1499627e08d19149d6"

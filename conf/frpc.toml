@@ -1,9 +1,24 @@
-serverAddr = "127.0.0.1"
+# Internal server. auth.token must match conf/frps.toml.
+serverAddr = "121.55.247.111"
 serverPort = 7000
+loginFailExit = false
 
+auth.method = "token"
+auth.token = "3c6af50bb349485b8e3b7cdaacfa52b5"
+
+transport.protocol = "tcp"
+transport.tls.enable = true
+
+# Dashboard: edit proxies and this config file, then reload.
+webServer.addr = "0.0.0.0"
+webServer.port = 7400
+webServer.user = "admin"
+webServer.password = "7b7aef8fbe9a4bef99d48915010efb5b"
+
+# Phone HTTPS and WebSocket are forwarded as-is to the local TLS service.
 [[proxies]]
-name = "test-tcp"
-type = "tcp"
+name = "user-data-api"
+type = "https"
 localIP = "127.0.0.1"
-localPort = 22
-remotePort = 6000
+localPort = 3000
+customDomains = ["prev-frp.xuandou.vip"]

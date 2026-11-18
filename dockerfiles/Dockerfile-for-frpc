@@ -23,5 +23,7 @@ FROM alpine:3
 RUN apk add --no-cache tzdata
 
 COPY --from=building /building/bin/frpc /usr/bin/frpc
+COPY conf/frpc.toml /etc/frp/frpc.toml
 
 ENTRYPOINT ["/usr/bin/frpc"]
+CMD ["-c", "/etc/frp/frpc.toml"]
