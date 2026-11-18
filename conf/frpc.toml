@@ -1,5 +1,5 @@
 # Internal server. auth.token must match conf/frps.toml.
-serverAddr = "121.55.247.111"
+serverAddr = "120.55.247.111"
 serverPort = 7000
 loginFailExit = false
 
