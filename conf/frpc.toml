@@ -22,3 +22,25 @@ type = "https"
 localIP = "127.0.0.1"
 localPort = 3000
 customDomains = ["prev-frp.xuandou.vip"]
+
+# Plain HTTP and WebSocket. The local service must speak HTTP, not TLS.
+[[proxies]]
+name = "user-data-http"
+type = "http"
+localIP = "127.0.0.1"
+localPort = 3080
+customDomains = ["prev-frp.xuandou.vip"]
+
+[[proxies]]
+name = "user-data-tcp"
+type = "tcp"
+localIP = "127.0.0.1"
+localPort = 3001
+remotePort = 6000
+
+[[proxies]]
+name = "user-data-udp"
+type = "udp"
+localIP = "127.0.0.1"
+localPort = 3002
+remotePort = 6001

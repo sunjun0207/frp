@@ -1,7 +1,8 @@
 # Public server. auth.token must match conf/frpc.toml.
 bindAddr = "0.0.0.0"
 bindPort = 7000
-vhostHTTPSPort = 443
+vhostHTTPPort = 8080
+vhostHTTPSPort = 8443
 
 auth.method = "token"
 auth.token = "3c6af50bb349485b8e3b7cdaacfa52b5"
