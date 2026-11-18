@@ -13,11 +13,11 @@ ENV TZ=Asia/Shanghai \
     DATA_DIR=/data \
     TLS_CERT=/certs/fullchain.pem \
     TLS_KEY=/certs/privkey.pem \
-    HTTPS_ADDR=127.0.0.1:3000 \
-    HTTP_ADDR=127.0.0.1:3080 \
-    TCP_ADDR=127.0.0.1:3001 \
-    UDP_ADDR=127.0.0.1:3002 \
+    HTTPS_ADDR=127.0.0.1:4000 \
+    HTTP_ADDR=127.0.0.1:4080 \
+    TCP_ADDR=127.0.0.1:4001 \
+    UDP_ADDR=127.0.0.1:4002 \
     QUERY_ADDR=127.0.0.1:3090
 
-EXPOSE 3000 3080 3001 3002/udp
+EXPOSE 4000 4080 4001 4002/udp
 ENTRYPOINT ["/usr/bin/xuandou-data-api"]
