@@ -32,10 +32,10 @@ func main() {
 	}
 	disk := newDisk(env("DATA_DIR", "/data"), loc, workerID())
 
-	httpsAddr := env("HTTPS_ADDR", "127.0.0.1:4000")
-	httpAddr := env("HTTP_ADDR", "127.0.0.1:4080")
-	tcpAddr := env("TCP_ADDR", "127.0.0.1:4001")
-	udpAddr := env("UDP_ADDR", "127.0.0.1:4002")
+	httpsAddr := env("HTTPS_ADDR", "0.0.0.0:4000")
+	httpAddr := env("HTTP_ADDR", "0.0.0.0:4080")
+	tcpAddr := env("TCP_ADDR", "0.0.0.0:4001")
+	udpAddr := env("UDP_ADDR", "0.0.0.0:4002")
 	queryAddr := env("QUERY_ADDR", "0.0.0.0:3090")
 
 	go func() {

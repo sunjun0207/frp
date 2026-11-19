@@ -34,10 +34,10 @@ ENV TZ=Asia/Shanghai \
     TLS_ENABLE=true \
     TLS_CERT=/certs/fullchain.pem \
     TLS_KEY=/certs/privkey.pem \
-    HTTPS_ADDR=127.0.0.1:4000 \
-    HTTP_ADDR=127.0.0.1:4080 \
-    TCP_ADDR=127.0.0.1:4001 \
-    UDP_ADDR=127.0.0.1:4002 \
+    HTTPS_ADDR=0.0.0.0:4000 \
+    HTTP_ADDR=0.0.0.0:4080 \
+    TCP_ADDR=0.0.0.0:4001 \
+    UDP_ADDR=0.0.0.0:4002 \
     QUERY_ADDR=0.0.0.0:3090
 
 EXPOSE 4000 4080 4001 4002/udp 3090
