@@ -1,16 +1,27 @@
-FROM node:22 AS web-builder
+# 国内构建默认走 DaoCloud 镜像、npmmirror、goproxy.cn 和阿里云 apk。
+ARG NODE_IMAGE=docker.m.daocloud.io/library/node:22
+ARG GOLANG_IMAGE=docker.m.daocloud.io/library/golang:1.26
+ARG ALPINE_IMAGE=docker.m.daocloud.io/library/alpine:3
 
+FROM ${NODE_IMAGE} AS web-builder
+
+ARG NPM_REGISTRY=https://registry.npmmirror.com
 WORKDIR /web
 COPY web/package.json web/package-lock.json ./
 COPY web/shared/package.json ./shared/package.json
 COPY web/frpc/package.json ./frpc/package.json
 COPY web/frps/package.json ./frps/package.json
-RUN npm ci
+RUN npm config set registry "${NPM_REGISTRY}" && npm ci
 COPY web/shared/ ./shared/
 COPY web/frpc/ ./frpc/
 RUN npm run build --workspace frpc
 
-FROM golang:1.26 AS building
+FROM ${GOLANG_IMAGE} AS building
+
+ARG GOPROXY=https://goproxy.cn,direct
+ARG GOSUMDB=sum.golang.google.cn
+ENV GOPROXY=${GOPROXY} \
+    GOSUMDB=${GOSUMDB}
 
 COPY . /building
 COPY --from=web-builder /web/frpc/dist /building/web/frpc/dist
@@ -18,9 +29,16 @@ WORKDIR /building
 
 RUN env CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -tags frpc -o bin/frpc ./cmd/frpc
 
-FROM alpine:3
+FROM ${ALPINE_IMAGE}
 
-RUN apk add --no-cache tzdata
+ARG ALPINE_APK_REPO_MIRROR=https://mirrors.aliyun.com
+RUN set -eux; \
+    if [ -n "${ALPINE_APK_REPO_MIRROR}" ]; then \
+      sed -i "s#https://dl-cdn.alpinelinux.org#${ALPINE_APK_REPO_MIRROR}#g" /etc/apk/repositories; \
+    fi; \
+    apk update --no-cache \
+    || ( sed -i 's|https://|http://|g' /etc/apk/repositories && apk update --no-cache ); \
+    apk add --no-cache tzdata
 
 COPY --from=building /building/bin/frpc /usr/bin/frpc
 COPY conf/frpc.toml /etc/frp/frpc.toml

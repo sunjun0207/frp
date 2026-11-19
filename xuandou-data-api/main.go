@@ -52,6 +52,10 @@ func main() {
 
 	certFile := env("TLS_CERT", "/certs/fullchain.pem")
 	keyFile := env("TLS_KEY", "/certs/privkey.pem")
+	if env("TLS_ENABLE", "true") != "true" {
+		log.Printf("https disabled, data dir %s", disk.dir)
+		select {}
+	}
 	log.Printf("https listen on %s, data dir %s", httpsAddr, disk.dir)
 	log.Fatal(http.ListenAndServeTLS(httpsAddr, certFile, keyFile, handler))
 }
