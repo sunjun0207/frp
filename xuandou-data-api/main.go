@@ -76,11 +76,15 @@ func workerID() uint64 {
 }
 
 type savedFile struct {
-	ID       string `json:"id"`
-	File     string `json:"file"`
-	Size     int64  `json:"size"`
-	Protocol string `json:"protocol"`
-	Path     string `json:"path"`
+	ID        string `json:"id"`
+	File      string `json:"file"`
+	Size      int64  `json:"size"`
+	Protocol  string `json:"protocol"`
+	Path      string `json:"path"`
+	Time      string `json:"time"`
+	UserID    string `json:"userId"`
+	ProjectID string `json:"projectId"`
+	ProblemID string `json:"problemId"`
 }
 
 type snowflake struct {
@@ -173,7 +177,18 @@ func (d *disk) saveMultipart(w http.ResponseWriter, r *http.Request) {
 
 func (d *disk) write(protocol, reqPath, contentType, filename string, r io.Reader) (savedFile, error) {
 	id, stamp := d.flake.next(time.Now().In(d.loc))
+	body := r
+	meta := payloadMeta{Time: stamp.Format("2006-01-02 15:04:05")}
 	ext := fileExt(contentType, filename)
+	if jsonMedia(contentType) {
+		raw, err := io.ReadAll(r)
+		if err != nil {
+			return savedFile{}, err
+		}
+		raw, meta = addTime(raw, stamp)
+		body = bytes.NewReader(raw)
+		ext = "json"
+	}
 	rel := filepath.ToSlash(filepath.Join(stamp.Format("2006"), stamp.Format("0102"), stamp.Format("150405")+"_"+id+"."+ext))
 	full := filepath.Join(d.dir, filepath.FromSlash(rel))
 	if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
@@ -183,7 +198,7 @@ func (d *disk) write(protocol, reqPath, contentType, filename string, r io.Reade
 	if err != nil {
 		return savedFile{}, err
 	}
-	n, copyErr := io.Copy(f, r)
+	n, copyErr := io.Copy(f, body)
 	closeErr := f.Close()
 	if copyErr != nil {
 		return savedFile{}, copyErr
@@ -192,7 +207,89 @@ func (d *disk) write(protocol, reqPath, contentType, filename string, r io.Reade
 		return savedFile{}, closeErr
 	}
 	log.Printf("stored %s %s (%d bytes)", protocol, rel, n)
-	return savedFile{ID: id, File: rel, Size: n, Protocol: protocol, Path: reqPath}, nil
+	return savedFile{
+		ID: id, File: rel, Size: n, Protocol: protocol, Path: reqPath,
+		Time: meta.Time, UserID: meta.UserID, ProjectID: meta.ProjectID, ProblemID: meta.ProblemID,
+	}, nil
+}
+
+type payloadMeta struct {
+	Time      string
+	UserID    string
+	ProjectID string
+	ProblemID string
+}
+
+func addTime(body []byte, stamp time.Time) ([]byte, payloadMeta) {
+	serverTime := stamp.Format("2006-01-02 15:04:05")
+	meta := payloadMeta{Time: serverTime}
+	trimmed := bytes.TrimSpace(body)
+	if len(trimmed) == 0 || trimmed[0] != '{' {
+		return body, meta
+	}
+	var obj map[string]json.RawMessage
+	if err := json.Unmarshal(trimmed, &obj); err != nil {
+		return body, meta
+	}
+	meta.UserID = rawString(obj["userId"])
+	meta.ProjectID = rawString(obj["projectId"])
+	meta.ProblemID = rawString(obj["problemId"])
+	if t := rawString(obj["time"]); validTime(t) {
+		meta.Time = t
+		return trimmed, meta
+	}
+	encoded, err := json.Marshal(serverTime)
+	if err != nil {
+		return body, meta
+	}
+	obj["time"] = encoded
+	out, err := marshalObject(obj)
+	if err != nil {
+		return body, meta
+	}
+	return out, meta
+}
+
+func marshalObject(obj map[string]json.RawMessage) ([]byte, error) {
+	buf := &bytes.Buffer{}
+	enc := json.NewEncoder(buf)
+	enc.SetEscapeHTML(false)
+	if err := enc.Encode(obj); err != nil {
+		return nil, err
+	}
+	return bytes.TrimRight(buf.Bytes(), "\n"), nil
+}
+
+func rawString(raw json.RawMessage) string {
+	if len(bytes.TrimSpace(raw)) == 0 {
+		return ""
+	}
+	var s string
+	if err := json.Unmarshal(raw, &s); err == nil {
+		return s
+	}
+	return ""
+}
+
+func jsonMedia(contentType string) bool {
+	mediaType, _, err := mime.ParseMediaType(contentType)
+	return err == nil && (mediaType == "application/json" || mediaType == "text/json")
+}
+
+func validTime(s string) bool {
+	if len(s) != 19 {
+		return false
+	}
+	_, err := time.Parse("2006-01-02 15:04:05", s)
+	return err == nil
+}
+
+func validDay(s string) bool {
+	if len(s) != 10 {
+		return false
+	}
+	_, err := time.Parse("2006-01-02", s)
+	return err == nil
 }
 
 func (d *disk) queryHandler() http.Handler {
@@ -202,42 +299,71 @@ func (d *disk) queryHandler() http.Handler {
 			return
 		}
 		key := strings.Trim(strings.TrimPrefix(r.URL.Path, "/api/messages"), "/")
-		items := d.list()
-		if key == "" {
-			writeJSON(w, map[string]any{"messages": items})
-			return
+		switch key {
+		case "":
+			writeJSON(w, map[string]any{"messages": d.list()})
+		case "range":
+			d.writeRange(w, r)
+		case "latest":
+			d.writeContent(w, "latest")
+		default:
+			d.writeContent(w, key)
 		}
-		var item *savedFile
-		if key == "latest" {
-			if len(items) == 0 {
-				http.Error(w, "no messages", http.StatusNotFound)
-				return
-			}
-			item = &items[0]
-		} else {
-			for i := range items {
-				if items[i].ID == key {
-					item = &items[i]
-					break
-				}
-			}
-		}
-		if item == nil {
-			http.Error(w, "message not found", http.StatusNotFound)
-			return
-		}
-		full := filepath.Join(d.dir, filepath.FromSlash(item.File))
-		f, err := os.Open(full)
-		if err != nil {
-			http.Error(w, "message not found", http.StatusNotFound)
-			return
-		}
-		defer f.Close()
-		if ext := filepath.Ext(item.File); ext != "" {
-			w.Header().Set("Content-Type", mime.TypeByExtension(ext))
-		}
-		_, _ = io.Copy(w, f)
 	})
+}
+
+func (d *disk) writeRange(w http.ResponseWriter, r *http.Request) {
+	start := r.URL.Query().Get("start")
+	end := r.URL.Query().Get("end")
+	if !validDay(start) || !validDay(end) || start > end {
+		http.Error(w, "start and end must be yyyy-MM-dd", http.StatusBadRequest)
+		return
+	}
+	matched := make([]savedFile, 0)
+	for _, item := range d.list() {
+		day := item.Time
+		if len(day) >= 10 {
+			day = day[:10]
+		}
+		if day >= start && day <= end {
+			matched = append(matched, item)
+		}
+	}
+	writeJSON(w, map[string]any{"messages": matched})
+}
+
+func (d *disk) writeContent(w http.ResponseWriter, key string) {
+	items := d.list()
+	var item *savedFile
+	if key == "latest" {
+		if len(items) == 0 {
+			http.Error(w, "no messages", http.StatusNotFound)
+			return
+		}
+		item = &items[0]
+	} else {
+		for i := range items {
+			if items[i].ID == key {
+				item = &items[i]
+				break
+			}
+		}
+	}
+	if item == nil {
+		http.Error(w, "message not found", http.StatusNotFound)
+		return
+	}
+	full := filepath.Join(d.dir, filepath.FromSlash(item.File))
+	f, err := os.Open(full)
+	if err != nil {
+		http.Error(w, "message not found", http.StatusNotFound)
+		return
+	}
+	defer f.Close()
+	if ext := filepath.Ext(item.File); ext != "" {
+		w.Header().Set("Content-Type", mime.TypeByExtension(ext))
+	}
+	_, _ = io.Copy(w, f)
 }
 
 func (d *disk) list() []savedFile {
@@ -258,19 +384,67 @@ func (d *disk) list() []savedFile {
 		if err != nil {
 			return nil
 		}
-		items = append(items, savedFile{
+		item := savedFile{
 			ID:   id,
 			File: filepath.ToSlash(rel),
 			Size: info.Size(),
-		})
+			Time: timeFromRel(filepath.ToSlash(rel)),
+		}
+		d.fillMeta(&item)
+		items = append(items, item)
 		return nil
 	})
+	if items == nil {
+		items = []savedFile{}
+	}
 	sort.Slice(items, func(i, j int) bool {
 		a, _ := strconv.ParseUint(items[i].ID, 10, 64)
 		b, _ := strconv.ParseUint(items[j].ID, 10, 64)
 		return a > b
 	})
 	return items
+}
+
+func (d *disk) fillMeta(item *savedFile) {
+	if !strings.EqualFold(filepath.Ext(item.File), ".json") {
+		return
+	}
+	full := filepath.Join(d.dir, filepath.FromSlash(item.File))
+	f, err := os.Open(full)
+	if err != nil {
+		return
+	}
+	defer f.Close()
+	raw, err := io.ReadAll(io.LimitReader(f, 1<<20))
+	if err != nil {
+		return
+	}
+	var obj map[string]json.RawMessage
+	if json.Unmarshal(bytes.TrimSpace(raw), &obj) != nil {
+		return
+	}
+	if t := rawString(obj["time"]); validTime(t) {
+		item.Time = t
+	}
+	item.UserID = rawString(obj["userId"])
+	item.ProjectID = rawString(obj["projectId"])
+	item.ProblemID = rawString(obj["problemId"])
+}
+
+func timeFromRel(rel string) string {
+	parts := strings.Split(rel, "/")
+	if len(parts) != 3 || len(parts[0]) != 4 || len(parts[1]) != 4 {
+		return ""
+	}
+	clock, _, ok := strings.Cut(parts[2], "_")
+	if !ok || len(clock) != 6 {
+		return ""
+	}
+	stamp := parts[0] + "-" + parts[1][:2] + "-" + parts[1][2:] + " " + clock[:2] + ":" + clock[2:4] + ":" + clock[4:]
+	if !validTime(stamp) {
+		return ""
+	}
+	return stamp
 }
 
 func fileID(name string) string {
