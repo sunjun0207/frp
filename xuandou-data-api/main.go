@@ -36,7 +36,7 @@ func main() {
 	httpAddr := env("HTTP_ADDR", "127.0.0.1:4080")
 	tcpAddr := env("TCP_ADDR", "127.0.0.1:4001")
 	udpAddr := env("UDP_ADDR", "127.0.0.1:4002")
-	queryAddr := env("QUERY_ADDR", "127.0.0.1:3090")
+	queryAddr := env("QUERY_ADDR", "0.0.0.0:3090")
 
 	go func() {
 		log.Printf("query listen on %s", queryAddr)
